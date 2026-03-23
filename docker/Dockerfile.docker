@@ -1,0 +1,30 @@
+FROM jenkins/inbound-agent:alpine
+
+LABEL org.opencontainers.image.title="inbound-agent-docker" \
+      org.opencontainers.image.description="Lightweight Jenkins inbound agent image based on Alpine Linux with Docker CLI" \
+      org.opencontainers.image.source="https://github.com/t0mmili/jenkins-agents" \
+      org.opencontainers.image.version="1" \
+      org.opencontainers.image.licenses="MIT"
+
+USER root
+
+# Update system packages
+RUN apk update && \
+    apk upgrade --available && \
+    apk add --no-cache \
+        libcurl curl bash git
+
+# Install Docker client
+ARG DOCKER_VERSION=27.1.2
+RUN curl -fL https://download.docker.com/linux/static/stable/$(uname -m)/docker-$DOCKER_VERSION.tgz \
+    | tar --strip-components=1 -xz -C /usr/local/bin docker/docker
+
+# Install Docker Buildx plugin
+ARG BUILDX_VERSION=0.21.2
+RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') && \
+    mkdir -p /usr/local/libexec/docker/cli-plugins && \
+    curl -fL https://github.com/docker/buildx/releases/download/v${BUILDX_VERSION}/buildx-v${BUILDX_VERSION}.linux-${ARCH} \
+        -o /usr/local/libexec/docker/cli-plugins/docker-buildx && \
+    chmod +x /usr/local/libexec/docker/cli-plugins/docker-buildx
+
+USER jenkins

@@ -1,0 +1,24 @@
+FROM jenkins/inbound-agent:alpine
+
+LABEL org.opencontainers.image.title="inbound-agent-trivy" \
+      org.opencontainers.image.description="Lightweight Jenkins inbound agent image based on Alpine Linux with Trivy preinstalled" \
+      org.opencontainers.image.source="https://github.com/t0mmili/jenkins-agents" \
+      org.opencontainers.image.version="1" \
+      org.opencontainers.image.licenses="MIT"
+
+USER root
+
+# Update system packages
+RUN apk update && \
+    apk upgrade --available && \
+    apk add --no-cache libcurl curl bash
+
+# Install Trivy binary
+# This script automatically detects architecture (x86_64 vs arm64)
+RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.69.3
+
+# Ensure the 'jenkins' user has a home directory and permissions for the cache
+RUN mkdir -p /home/jenkins/.cache/trivy && \
+    chown -R jenkins:jenkins /home/jenkins/.cache
+
+USER jenkins
