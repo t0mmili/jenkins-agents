@@ -1,6 +1,6 @@
 FROM jenkins/inbound-agent:alpine
 
-LABEL org.opencontainers.image.title="inbound-agent-trivy" \
+LABEL org.opencontainers.image.title="jenkinsinbound-agent-trivy" \
       org.opencontainers.image.description="Lightweight Jenkins inbound agent image based on Alpine Linux with Trivy preinstalled" \
       org.opencontainers.image.source="https://github.com/t0mmili/jenkins-agents" \
       org.opencontainers.image.version="1" \

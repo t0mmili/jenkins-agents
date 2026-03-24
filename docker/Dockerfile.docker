@@ -1,6 +1,6 @@
 FROM jenkins/inbound-agent:alpine
 
-LABEL org.opencontainers.image.title="inbound-agent-docker" \
+LABEL org.opencontainers.image.title="jenkins-inbound-agent-docker" \
       org.opencontainers.image.description="Lightweight Jenkins inbound agent image based on Alpine Linux with Docker CLI" \
       org.opencontainers.image.source="https://github.com/t0mmili/jenkins-agents" \
       org.opencontainers.image.version="1" \
