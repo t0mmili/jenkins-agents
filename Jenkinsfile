@@ -42,9 +42,11 @@ pipeline {
   }
 
   environment {
+    AGENT_IMAGE = "${params.agentImage}"
     BUILDER     = "jenkins-builder-${env.BUILD_NUMBER}"
     CI_IMAGE    = "${params.agentImage == 'docker' ? 'jad-ci' : 'jat-ci'}:${env.BUILD_NUMBER}"
     DOCKER_REPO = "t0mmili/jenkins-inbound-agent-${params.agentImage}"
+    IMAGE_TAG   = "${params.dockerTag}"
   }
 
   stages {
@@ -83,8 +85,8 @@ pipeline {
                 hadolint \
                 --format json \
                 --failure-threshold none \
-                - < "Dockerfile.${params.agentImage}" \
-                > "hadolint-results-${params.agentImage}.json"
+                - < "Dockerfile.${AGENT_IMAGE}" \
+                > "hadolint-results-${AGENT_IMAGE}.json"
             '''
           }
           post {
@@ -121,8 +123,8 @@ pipeline {
             docker buildx build \
               --builder "${BUILDER}" \
               --platform "linux/${platform}" \
-              --build-arg IMAGE_VERSION="${params.dockerTag}" \
-              --file "Dockerfile.${agentImage}" \
+              --build-arg IMAGE_VERSION="${IMAGE_TAG}" \
+              --file "Dockerfile.${AGENT_IMAGE}" \
               --provenance=false \
               --sbom=false \
               --progress plain \
@@ -150,7 +152,7 @@ pipeline {
             trivy image \
               --input "image-${platform}.tar" \
               --format json \
-              --output "trivy-results-${agentImage}-${platform}.json" \
+              --output "trivy-results-${AGENT_IMAGE}-${platform}.json" \
               --severity HIGH,CRITICAL \
               --exit-code 0 \
               --no-progress
@@ -187,7 +189,7 @@ pipeline {
         }
 
         script {
-          def tags = ["-t ${DOCKER_REPO}:${params.dockerTag}"]
+          def tags = ["-t ${DOCKER_REPO}:${IMAGE_TAG}"]
           if (params.pushLatest) {
             tags << "-t ${DOCKER_REPO}:latest"
           }
@@ -195,8 +197,8 @@ pipeline {
             docker buildx build \
               --builder "${BUILDER}" \
               --platform "linux/amd64,linux/arm64" \
-              --build-arg IMAGE_VERSION="${params.dockerTag}" \
-              --file "Dockerfile.${params.agentImage}" \
+              --build-arg IMAGE_VERSION="${IMAGE_TAG}" \
+              --file "Dockerfile.${AGENT_IMAGE}" \
               --provenance=true \
               --sbom=true \
               --progress plain \
@@ -206,7 +208,7 @@ pipeline {
           '''
         }
 
-        sh 'docker buildx imagetools inspect "${DOCKER_REPO}:${params.dockerTag}"'
+        sh 'docker buildx imagetools inspect "${DOCKER_REPO}:${IMAGE_TAG}"'
       }
     }
   }
@@ -223,9 +225,9 @@ pipeline {
     success {
       script {
         if (params.dryRun) {
-          echo "Dry Run successful. Built and scanned ${params.dockerRepo}:${params.dockerTag}. Nothing published."
+          echo "Dry Run successful. Built and scanned ${params.dockerRepo}:${IMAGE_TAG}. Nothing published."
         } else {
-          echo "Published successfully ${params.dockerRepo}:${params.dockerTag}"
+          echo "Published successfully ${params.dockerRepo}:${IMAGE_TAG}"
         }
       }
     }
