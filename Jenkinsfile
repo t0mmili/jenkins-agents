@@ -45,6 +45,7 @@ pipeline {
     AGENT_IMAGE = "${params.agentImage}"
     BUILDER     = "jenkins-builder-${env.BUILD_NUMBER}"
     CI_IMAGE    = "${params.agentImage == 'docker' ? 'jad-ci' : 'jat-ci'}:${env.BUILD_NUMBER}"
+    DOCKER_FILE = "docker/Dockerfile.${params.agentImage}"
     DOCKER_REPO = "t0mmili/jenkins-inbound-agent-${params.agentImage}"
     IMAGE_TAG   = "${params.dockerTag}"
   }
@@ -85,7 +86,7 @@ pipeline {
                 hadolint \
                 --format json \
                 --failure-threshold none \
-                - < "Dockerfile.${AGENT_IMAGE}" \
+                - < "${DOCKER_FILE}" \
                 > "hadolint-results-${AGENT_IMAGE}.json"
             '''
           }
@@ -124,7 +125,7 @@ pipeline {
               --builder "${BUILDER}" \
               --platform "linux/${platform}" \
               --build-arg IMAGE_VERSION="${IMAGE_TAG}" \
-              --file "Dockerfile.${AGENT_IMAGE}" \
+              --file "${DOCKER_FILE}" \
               --provenance=false \
               --sbom=false \
               --progress plain \
@@ -198,7 +199,7 @@ pipeline {
               --builder "${BUILDER}" \
               --platform "linux/amd64,linux/arm64" \
               --build-arg IMAGE_VERSION="${IMAGE_TAG}" \
-              --file "Dockerfile.${AGENT_IMAGE}" \
+              --file "${DOCKER_FILE}" \
               --provenance=true \
               --sbom=true \
               --progress plain \
