@@ -85,7 +85,7 @@ pipeline {
                 hadolint/hadolint \
                 hadolint \
                 --format json \
-                --failure-threshold none \
+                --no-fail \
                 - < "${DOCKER_FILE}" \
                 > "hadolint-results-${AGENT_IMAGE}.json"
             '''
@@ -96,10 +96,15 @@ pipeline {
               recordIssues(
                 enabledForFailure: true,
                 qualityGates: [
-                  [criticality: 'FAILURE', integerThreshold: 1, threshold: 1.0, type: 'NEW_ERROR'],
-                  [criticality: 'FAILURE', integerThreshold: 1, threshold: 1.0, type: 'NEW_HIGH'],
+                  // Never tolerate existing errors
+                  [criticality: 'FAILURE',  integerThreshold: 1, threshold: 1.0, type: 'TOTAL_ERROR'],
+                  // Reject new serious findings
+                  [criticality: 'FAILURE',  integerThreshold: 1, threshold: 1.0, type: 'NEW_ERROR'],
+                  [criticality: 'FAILURE',  integerThreshold: 1, threshold: 1.0, type: 'NEW_HIGH'],
+                  // Warn about new normal-severity findings
                   [criticality: 'UNSTABLE', integerThreshold: 1, threshold: 1.0, type: 'NEW_NORMAL'],
-                  [criticality: 'FAILURE', integerThreshold: 1, threshold: 1.0, type: 'TOTAL_ERROR']
+                  // Reject new low-severity findings less aggressively
+                  [criticality: 'UNSTABLE', integerThreshold: 1, threshold: 1.0, type: 'NEW_LOW']
                 ],
                 tools: [hadoLint(pattern: 'hadolint-results-*.json')]
               )
@@ -166,9 +171,11 @@ pipeline {
           recordIssues(
             enabledForFailure: true,
             qualityGates: [
-              [criticality: 'FAILURE', integerThreshold: 1, type: 'NEW_ERROR'],
-              [criticality: 'FAILURE', integerThreshold: 5, type: 'NEW_HIGH'],
-              [criticality: 'UNSTABLE', integerThreshold: 1, type: 'TOTAL_ERROR']
+              // Never tolerate existing errors
+              [criticality: 'FAILURE', integerThreshold: 1, threshold: 1.0, type: 'TOTAL_ERROR'],
+              // Reject new serious findings
+              [criticality: 'FAILURE', integerThreshold: 1, threshold: 1.0, type: 'NEW_ERROR'],
+              [criticality: 'FAILURE', integerThreshold: 1, threshold: 1.0, type: 'NEW_HIGH']
             ],
             tools: [trivy(pattern: 'trivy-results-*.json')]
           )
