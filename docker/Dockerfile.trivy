@@ -13,7 +13,8 @@ USER root
 # Update system packages
 RUN apk update && \
     apk upgrade --available && \
-    apk add --no-cache libcurl curl bash
+    apk add --no-cache \
+        libcurl curl bash
 
 # Install Trivy binary
 # This script automatically detects architecture (x86_64 vs arm64)
