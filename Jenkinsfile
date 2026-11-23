@@ -143,7 +143,7 @@ pipeline {
       }
       post {
         success {
-          stash includes: 'image-*.tar', name: 'docker-images'
+          stash includes: 'image-*.tar,.trivyignore.yaml', name: 'build-artifacts'
         }
       }
     }
@@ -151,7 +151,7 @@ pipeline {
     stage('Scan images') {
       agent { label 'docker-agent-trivy' }
       steps {
-        unstash 'docker-images'
+        unstash 'build-artifacts'
 
         sh '''
           for platform in amd64 arm64; do
