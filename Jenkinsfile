@@ -157,6 +157,7 @@ pipeline {
           for platform in amd64 arm64; do
             trivy image \
               --input "image-${platform}.tar" \
+              --ignorefile .trivyignore.yaml \
               --format json \
               --output "trivy-results-${AGENT_IMAGE}-${platform}.json" \
               --severity HIGH,CRITICAL \

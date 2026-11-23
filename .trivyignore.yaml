@@ -1,0 +1,11 @@
+vulnerabilities:
+  - id: CVE-2025-68121
+    paths:
+      - usr/local/bin/docker
+    expired_at: 2027-05-23
+    statement: "Accepted risk: Docker CLI version must match QNAP's version"
+  - id: CVE-2026-33186
+    paths:
+      - usr/local/bin/docker
+    expired_at: 2027-05-23
+    statement: "Accepted risk: Docker CLI version must match QNAP's version"
