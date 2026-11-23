@@ -1,5 +1,3 @@
-currentBuild.rawBuild.project.description = 'Pipeline for building and publishing Jenkins agents Docker images'
-
 pipeline {
   agent { label 'docker-agent-general' }
 
@@ -14,6 +12,16 @@ pipeline {
   }
 
   parameters {
+    booleanParam(
+      name: 'dryRun',
+      defaultValue: true,
+      description: 'Build and scan only. Nothing is pushed to Docker Hub.'
+    )
+    booleanParam(
+      name: 'pushLatest',
+      defaultValue: false,
+      description: 'Tag as latest (ignored when dryRun is set)'
+    )
     choice(
       name: 'agentImage',
       choices: ['docker', 'trivy'],
@@ -28,13 +36,18 @@ pipeline {
     string(
       name: 'dockerTag',
       defaultValue: '',
-      description: 'Docker image tag',
+      description: 'Image tag',
       trim: true
     )
   }
 
   environment {
+    AGENT_IMAGE = "${params.agentImage}"
+    BUILDER     = "jenkins-builder-${env.BUILD_NUMBER}"
+    CI_IMAGE    = "${params.agentImage == 'docker' ? 'jad-ci' : 'jat-ci'}:${env.BUILD_NUMBER}"
+    DOCKER_FILE = "docker/Dockerfile.${params.agentImage}"
     DOCKER_REPO = "t0mmili/jenkins-inbound-agent-${params.agentImage}"
+    IMAGE_TAG   = "${params.dockerTag}"
   }
 
   stages {
@@ -55,99 +68,156 @@ pipeline {
         }
       }
     }
+
     stage('Checkout') {
       steps {
         checkout scm
       }
     }
-    stage('Docker login') {
+
+    stage('Validate') {
+      parallel {
+        stage('Dockerfile lint') {
+          steps {
+            sh '''
+              docker run \
+                --rm -i \
+                hadolint/hadolint \
+                hadolint \
+                --format json \
+                --no-fail \
+                - < "${DOCKER_FILE}" \
+                > "hadolint-results-${AGENT_IMAGE}.json"
+            '''
+          }
+          post {
+            always {
+              archiveArtifacts artifacts: 'hadolint-results-*.json', fingerprint: true
+              recordIssues(
+                enabledForFailure: true,
+                qualityGates: [
+                  // Never tolerate existing errors
+                  [criticality: 'FAILURE',  integerThreshold: 1, threshold: 1.0, type: 'TOTAL_ERROR'],
+                  // Reject new serious findings
+                  [criticality: 'FAILURE',  integerThreshold: 1, threshold: 1.0, type: 'NEW_ERROR'],
+                  [criticality: 'FAILURE',  integerThreshold: 1, threshold: 1.0, type: 'NEW_HIGH'],
+                  // Warn about new normal-severity findings
+                  [criticality: 'UNSTABLE', integerThreshold: 1, threshold: 1.0, type: 'NEW_NORMAL'],
+                  // Reject new low-severity findings less aggressively
+                  [criticality: 'UNSTABLE', integerThreshold: 1, threshold: 1.0, type: 'NEW_LOW']
+                ],
+                tools: [hadoLint(pattern: 'hadolint-results-*.json')]
+              )
+            }
+          }
+        }
+      }
+    }
+
+    stage('Build images') {
+      steps {
+        sh '''
+          docker buildx create \
+            --name "${BUILDER}" \
+            --driver docker-container \
+            --driver-opt image=moby/buildkit:v0.15.1 \
+            --bootstrap
+        '''
+
+        sh '''
+          for platform in amd64 arm64; do
+            docker buildx build \
+              --builder "${BUILDER}" \
+              --platform "linux/${platform}" \
+              --build-arg IMAGE_VERSION="${IMAGE_TAG}" \
+              --file "${DOCKER_FILE}" \
+              --provenance=false \
+              --sbom=false \
+              --progress plain \
+              --load \
+              -t "${CI_IMAGE}-${platform}" \
+              .
+            docker save "${CI_IMAGE}-${platform}" -o "image-${platform}.tar"
+          done
+        '''
+      }
+      post {
+        success {
+          stash includes: 'image-*.tar,.trivyignore.yaml', name: 'build-artifacts'
+        }
+      }
+    }
+
+    stage('Scan images') {
+      agent { label 'docker-agent-trivy' }
+      steps {
+        unstash 'build-artifacts'
+
+        sh '''
+          for platform in amd64 arm64; do
+            trivy image \
+              --input "image-${platform}.tar" \
+              --ignorefile .trivyignore.yaml \
+              --format json \
+              --output "trivy-results-${AGENT_IMAGE}-${platform}.json" \
+              --severity HIGH,CRITICAL \
+              --exit-code 0 \
+              --no-progress
+          done
+        '''
+      }
+      post {
+        always {
+          archiveArtifacts artifacts: 'trivy-results-*.json', fingerprint: true
+          recordIssues(
+            enabledForFailure: true,
+            qualityGates: [
+              // Never tolerate existing errors
+              [criticality: 'FAILURE', integerThreshold: 1, threshold: 1.0, type: 'TOTAL_ERROR'],
+              // Reject new serious findings
+              [criticality: 'FAILURE', integerThreshold: 1, threshold: 1.0, type: 'NEW_ERROR'],
+              [criticality: 'FAILURE', integerThreshold: 1, threshold: 1.0, type: 'NEW_HIGH']
+            ],
+            tools: [trivy(pattern: 'trivy-results-*.json')]
+          )
+        }
+      }
+    }
+
+    stage('Publish') {
+      when {
+        expression { !params.dryRun }
+      }
       steps {
         withCredentials([usernamePassword(
           credentialsId: dockerCredentials,
           usernameVariable: 'DOCKER_USER',
           passwordVariable: 'DOCKER_PASS'
         )]) {
+          sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+        }
+
+        script {
+          def tags = ["-t ${DOCKER_REPO}:${IMAGE_TAG}"]
+          if (params.pushLatest) {
+            tags << "-t ${DOCKER_REPO}:latest"
+          }
           sh '''
-            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+            docker buildx build \
+              --builder "${BUILDER}" \
+              --platform "linux/amd64,linux/arm64" \
+              --build-arg IMAGE_VERSION="${IMAGE_TAG}" \
+              --file "${DOCKER_FILE}" \
+              --provenance=true \
+              --sbom=true \
+              --progress plain \
+              ${tags.join(' ')} \
+              --push \
+              .
           '''
         }
-      }
-    }
-    stage('Create buildx builder') {
-      steps {
-        sh '''
-          docker buildx create \
-            --name jenkins-builder \
-            --driver docker-container \
-            --driver-opt image=moby/buildkit:v0.15.1 \
-            --use || docker buildx use jenkins-builder
-          docker buildx inspect --bootstrap
-        '''
-      }
-    }
-    stage('Build image') {
-      steps {
-        sh '''
-          docker buildx build \
-            --platform linux/amd64 \
-            --progress plain \
-            -f docker/Dockerfile.${agentImage} \
-            -t ${DOCKER_REPO}:${dockerTag} \
-            --output type=docker,dest=image.tar,compression=gzip \
-            .
-        '''
-      }
-      post {
-        success {
-          stash includes: 'image.tar', name: 'docker-image'
-        }
-      }
-    }
-    stage('Scan image') {
-      agent { label 'docker-agent-trivy' }
-      steps {
-        unstash 'docker-image'
 
-        sh '''
-          trivy image \
-            --input image.tar \
-            --format json \
-            --output trivy-results.json \
-            --severity HIGH,CRITICAL \
-            --exit-code 0 \
-            --no-progress
-        '''
-      }
-      post {
-        always {
-          archiveArtifacts artifacts: 'trivy-results.json', fingerprint: true
-          recordIssues(
-            enabledForFailure: true,
-            qualityGates: [
-              // Fail if even ONE NEW Critical (Error) is introduced
-              [criticality: 'FAILURE', integerThreshold: 1, type: 'NEW_ERROR'],
-              // Fail if > than 5 NEW Highs (High) are introduced
-              [criticality: 'FAILURE', integerThreshold: 5, type: 'NEW_HIGH'],
-              // Ustable if there are any TOTAL Criticals (Error)
-              [criticality: 'UNSTABLE', integerThreshold: 1, type: 'TOTAL_ERROR']
-            ],
-            tools: [trivy(pattern: 'trivy-results.json')]
-          )
-        }
-      }
-    }
-    stage('Push image') {
-      steps {
-        sh '''
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            --sbom=true \
-            -f docker/Dockerfile.${agentImage} \
-            -t ${DOCKER_REPO}:${dockerTag} \
-            -t ${DOCKER_REPO}:latest \
-            --push \
-            .
-        '''
+        sh 'docker buildx imagetools inspect "${DOCKER_REPO}:${IMAGE_TAG}"'
       }
     }
   }
@@ -155,13 +225,20 @@ pipeline {
   post {
     always {
       sh '''
-        docker buildx rm jenkins-builder || true
+        docker buildx rm "${BUILDER}" >/dev/null 2>&1 || true
+        docker rmi -f "${CI_IMAGE}-amd64" "${CI_IMAGE}-arm64" >/dev/null 2>&1 || true
         docker logout || true
       '''
       cleanWs()
     }
     success {
-      echo "Image pushed successfully: ${DOCKER_REPO}:${dockerTag}"
+      script {
+        if (params.dryRun) {
+          echo "Dry Run successful. Built and scanned ${params.dockerRepo}:${IMAGE_TAG}. Nothing published."
+        } else {
+          echo "Published successfully ${params.dockerRepo}:${IMAGE_TAG}"
+        }
+      }
     }
   }
 }
