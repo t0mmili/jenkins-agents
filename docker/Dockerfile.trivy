@@ -2,7 +2,7 @@ FROM jenkins/inbound-agent:alpine-jdk21
 
 ARG IMAGE_VERSION=0-dev
 
-LABEL org.opencontainers.image.title="jenkinsinbound-agent-trivy" \
+LABEL org.opencontainers.image.title="jenkins-inbound-agent-trivy" \
       org.opencontainers.image.description="Lightweight Jenkins inbound agent image based on Alpine Linux with Trivy preinstalled" \
       org.opencontainers.image.source="https://github.com/t0mmili/jenkins-agents" \
       org.opencontainers.image.version="${IMAGE_VERSION}" \
