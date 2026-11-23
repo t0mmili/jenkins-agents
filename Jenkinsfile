@@ -234,9 +234,9 @@ pipeline {
     success {
       script {
         if (params.dryRun) {
-          echo "Dry Run successful. Built and scanned ${params.dockerRepo}:${IMAGE_TAG}. Nothing published."
+          echo "Dry Run successful. Built and scanned ${DOCKER_REPO}:${IMAGE_TAG}. Nothing published."
         } else {
-          echo "Published successfully ${params.dockerRepo}:${IMAGE_TAG}"
+          echo "Published successfully ${DOCKER_REPO}:${IMAGE_TAG}"
         }
       }
     }
