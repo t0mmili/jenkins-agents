@@ -202,7 +202,7 @@ pipeline {
           if (params.pushLatest) {
             tags << "-t ${DOCKER_REPO}:latest"
           }
-          sh '''
+          sh """
             docker buildx build \
               --builder "${BUILDER}" \
               --platform "linux/amd64,linux/arm64" \
@@ -214,7 +214,7 @@ pipeline {
               ${tags.join(' ')} \
               --push \
               .
-          '''
+          """
         }
 
         sh 'docker buildx imagetools inspect "${DOCKER_REPO}:${IMAGE_TAG}"'
