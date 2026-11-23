@@ -3,9 +3,9 @@ vulnerabilities:
     purls:
       - "pkg:golang/stdlib"
     expired_at: 2027-05-23
-    statement: "Accepted risk: Docker CLI version must match QNAP's version"
+    statement: "Accepted risk"
   - id: CVE-2026-33186
     purls:
       - "pkg:golang/google.golang.org/grpc"
     expired_at: 2027-05-23
-    statement: "Accepted risk: Docker CLI version must match QNAP's version"
+    statement: "Accepted risk"
